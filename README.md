@@ -1,4 +1,4 @@
-# Multus-CNI Reday EKS-Managed Node Group 
+# Multus-CNI Ready EKS-Managed Node Group 
 
 
 
