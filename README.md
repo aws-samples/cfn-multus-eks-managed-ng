@@ -69,6 +69,8 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
    * *EksNodeGroupTagKey* - Tag Key that will trigger Lambda AttachENI action. (e.g. `multus-ng`).
    * *LambdaS3Bucket* - S3 bucket name where `eks-mng-multus-lambda.zip` is uploaded.
    * *LambdaS3Key* - Lambda file name (e.g. `eks-mng-multus-lambda.zip` unless you didn't change it).
+   * *useIPsFromStartOfSubnet* - whether to use IP assignment logic of Lambda (to start from smaller number available in the subnet). 
+   * *MultusInterfaceTags* - This is optional, if you want to add a Tag to the multus interface (e.g. with CNF name).  
 
 6. Create NodeGroup from EKS console or CLI using LauncthTemplate created by step 3. 
 
