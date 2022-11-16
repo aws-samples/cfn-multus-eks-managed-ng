@@ -23,7 +23,7 @@ This Github repo is to guide how we can use EKS-managed nodegroup (MNG) for Mult
 
 
 
-First deployment model you can think about is having EKS-MNGs per AZ. In this case, you can use `eks.amazonaws.com/nodegroup=NODE_GROUP_NAME` , as a nodeSelector to place pod to dedciated MNG. 
+First deployment model you can think about is having EKS-MNGs per AZ. In this case, you can use `eks.amazonaws.com/nodegroup=NODE_GROUP_NAME` , as a nodeSelector to place pod to a dedicated MNG. 
 
 ![EksMngInfra-final-config.drawio](./image/EksMngInfra-final-config-2ngs.drawio.png)
 
