@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Lambda Creation for Multus-ready EKS managed Node Group
+
+Mappings:
+  ServicePrincipals:
+    aws-cn:
+      ec2: ec2.amazonaws.com.cn
+    aws:
+      ec2: ec2.amazonaws.com
+
+Metadata:
+  "AWS::CloudFormation::Interface":
+    ParameterGroups:
+      - Label:
+          default: Multus CNI Configuration
+        Parameters:
+          - MultusSubnetsAz1
+          - MultusSubnetsAz2
+          - MultusSecurityGroupIds
+          - EksNodeGroupTagKey
+          - LambdaS3Bucket
+          - LambdaS3Key
+          - useIPsFromStartOfSubnet
+          - MultusInterfaceTags
+
+Parameters:
+  MultusSubnetsAz1:
+    Type: "List<AWS::EC2::Subnet::Id>"
+    Description: The List of Multus subnets from where multus 2ndary ENI will be connected to, in AZ1. You have to select subnets from same AZ. Given Multus subnet list will be checked with primary K8s network interface of worker whether they are matching to.
+  MultusSubnetsAz2:
+    Type: "List<AWS::EC2::Subnet::Id>"
+    Description: (Optional) The List of Multus subnets from where multus 2ndary ENI will be connected to, in AZ2. You have to select subnets from same AZ. Given Multus subnet list will be checked with primary K8s network interface of worker whether they are matching to.
+  MultusSecurityGroupIds:
+    Type: "List<AWS::EC2::SecurityGroup::Id>"
+    Description: The security groups of the Multus Network Interfaces. Along with the order of security group selection, each will be assigned to each MultusSubnet in above list. If number of security group doesn't match with number of multus subnets, then the 1st security group will be used for all multus subnets.
+  EksNodeGroupTagKey:
+    Type: String
+    Default: "multus-ng"
+    Description: Tag Key of EKS managed nodes that have to be with Multus ENI attachment.
+  LambdaS3Bucket:
+    Type: String
+    Default: "YOUR_BUCKET"
+    Description: Specify S3 Bucket(directory) where you locate Lambda Function
+  LambdaS3Key:
+    Type: String
+    Default: "eks-mng-multus-lambda.zip"
+    Description: Specify S3 Key(filename) of your Lambda Function
+  useIPsFromStartOfSubnet:
+    AllowedValues:
+       -  true
+       -  false
+    Default: true
+    Type: String
+    Description: "False -> use DHCP allocation (use it when using subnet CIDR reservation), True -> Allocate IPs from begining of the subnet(Lambda does this handling)"
+  MultusInterfaceTags:
+    Type: String
+    Description: "(Optional) Any additional tags to be applied on the multus intf (Key value pair, separated by comma ex: cnf=abc01,type=5g)"
+
+Resources:
+# Lambda Creation
+  RoleLambdaAttach2ndEniCfn:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: /
+  PolicyLambdaAttach2ndEniCfn:
+    Type: "AWS::IAM::Policy"
+    DependsOn: RoleLambdaAttach2ndEniCfn
+    Properties:
+      PolicyName: LambdaAttach2ndEniCfn
+      Roles: [
+          !Ref RoleLambdaAttach2ndEniCfn
+        ]
+      PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action: [
+                "ec2:CreateNetworkInterface",
+                "ec2:DescribeInstances",
+                "ec2:DetachNetworkInterface",
+                "ec2:ModifyNetworkInterfaceAttribute",
+                "ec2:DescribeSubnets",
+                "autoscaling:CompleteLifecycleAction",
+                "ec2:DeleteTags",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:CreateTags",
+                "ec2:DeleteNetworkInterface",
+                "ec2:AttachNetworkInterface",
+                "autoscaling:DescribeAutoScalingGroups",
+                "ec2:TerminateInstances"
+              ]
+              Resource: "*"
+            - Effect: Allow
+              Action: [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ]
+              Resource: "arn:aws:logs:*:*:*"
+            - Effect: Allow
+              Action: "logs:CreateLogGroup"
+              Resource: "arn:aws:logs:*:*:*"
+
+  LambdaAttach2ndENI:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Runtime: "python3.9"
+      Handler: "lambda_function.lambda_handler"
+      Role: !GetAtt RoleLambdaAttach2ndEniCfn.Arn
+      Code:
+        S3Bucket: !Ref LambdaS3Bucket
+        S3Key: !Ref LambdaS3Key
+      Timeout: "60"
+      Environment:
+        Variables:
+          Az1SubnetIds: !Join [ ",", !Ref MultusSubnetsAz1 ]
+          Az2SubnetIds: !Join [ ",", !Ref MultusSubnetsAz2 ]
+          SecGroupIds:  !Join [ ",", !Ref MultusSecurityGroupIds ]
+          TargetNodeGroupTagKey: !Ref EksNodeGroupTagKey
+          useStaticIPs: !Ref useIPsFromStartOfSubnet
+          ENITags: !Ref MultusInterfaceTags
+# End of Lambda
+
+# CloudWatch Event Trigger
+  NewInstanceEventRule:
+    Type: "AWS::Events::Rule"
+    Properties:
+      EventPattern:
+        source:
+          - "aws.autoscaling"
+        detail-type:
+          - "EC2 Instance-launch Lifecycle Action"
+      Targets:
+        -
+          Arn: !GetAtt LambdaAttach2ndENI.Arn
+          Id: Lambda
+  PermissionForEventsToInvokeLambda:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName:
+        Ref: "LambdaAttach2ndENI"
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn:
+        Fn::GetAtt:
+          - "NewInstanceEventRule"
+          - "Arn"
+
+Outputs:
+  LamddaFunction:
+    Description: Lambda Function Name
+    Value: !Ref LambdaAttach2ndENI
