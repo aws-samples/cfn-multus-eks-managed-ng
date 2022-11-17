@@ -81,4 +81,4 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 1. This artifact uses EventBridge event rule for LifeCycleHook action (`instant-launching`) to trigger Lambda function. 
 2. In Lambda function, it looks up `Tag` of each node, whether to proceed 2nd interface attachment. 
 3. If Node has a relevant `Tag`, then first it looks up AZ of primary K8s interface. Based on this result, it takes one of the list for multus-subnet (between 2 lists defined for 2 AZs), and attaches interfac(es) from chosen list of subnet(s). 
-4. Afterward action is identical to original Lambda function created in https://github.com/aws-samples/cfn-nodegroup-for-multus-cni/blob/main/lambda/lambda_function.py
+4. Afterward action is identical to original Lambda function created in https://github.com/aws-samples/cfn-nodegroup-for-multus-cni/blob/main/lambda/lambda_function.py Also, like previous raghs-aws@'s [work](https://github.com/raghs-aws/eks-install-guide-for-multus/blob/main/cfn/templates/nodegroup/lambda_function.zip), it supports IP assignment (starting from smallest number available). 
