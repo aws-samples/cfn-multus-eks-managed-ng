@@ -10,7 +10,7 @@ Please find further detail on Multus support in EKS for baseline information.
 
 [3] https://github.com/aws-samples/eks-install-guide-for-multus
 
-In above guiding documents, it was mostly using "selft-managed" nodegroup (versus EKS managed-nodegroup), while this GitHub is to guide how we can use similar work for EKS managed nodegroup. For the detail about difference between self-managed nodegroup and EKS-managed nodegroup, please also refer to the [link](https://docs.aws.amazon.com/eks/latest/userguide/eks-compute.html).
+In above guiding documents, "selft-managed" nodegroup (versus EKS managed-nodegroup) is being used, while this GitHub is to guide how we can use similar work for EKS managed nodegroup. For the detail about difference between self-managed nodegroup and EKS-managed nodegroup, please also refer to the [link](https://docs.aws.amazon.com/eks/latest/userguide/eks-compute.html).
 
 
 
