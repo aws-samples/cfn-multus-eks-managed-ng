@@ -1,5 +1,10 @@
 # Multus-CNI Ready EKS-Managed Node Group 
 
+## Related references
+
+https://aws.amazon.com/blogs/containers/amazon-eks-now-supports-multus-cni/
+https://docs.aws.amazon.com/eks/latest/userguide/pod-multiple-network-interfaces.html
+https://github.com/aws-samples/eks-install-guide-for-multus
 
 
 ## Introduction
