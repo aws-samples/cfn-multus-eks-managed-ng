@@ -12,7 +12,7 @@ This Github repo is to guide how we can use EKS-managed nodegroup (MNG) for Mult
 
 * vpc-infra.yaml  - this is to create VPC, subnets, route tables, EKS cluster, IGW, NAT-GW for basic infra environment. 
 
-* eks-mng-lct.yaml - this is to create LaunchTemplate for EKS managed nodegroup. We can define instance type/size, ssh key pair, and tag for each node. Tag is important, since Lambda is attaching additoinal multus interfaces to worker node based on each Tag. 
+* eks-mng-lct.yaml - this is to create LaunchTemplate for EKS managed nodegroup. We can define instance type/size, ssh key pair, and tag for each node. Among parameters, the Tag is the most important, since Lambda is attaching additoinal multus interfaces to the worker node based on matching Tag information. 
 
 * amazon-lambda-for-eksmng-multus.yaml - this creates,
 
