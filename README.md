@@ -1,4 +1,16 @@
-# Multus-CNI Reday EKS-Managed Node Group 
+# Multus-CNI Ready EKS-Managed Node Group 
+
+## Related references
+
+Please find further detail on Multus support in EKS for baseline information. 
+
+[1] https://aws.amazon.com/blogs/containers/amazon-eks-now-supports-multus-cni/ 
+
+[2] https://docs.aws.amazon.com/eks/latest/userguide/pod-multiple-network-interfaces.html 
+
+[3] https://github.com/aws-samples/eks-install-guide-for-multus
+
+In above guiding documents, "selft-managed" nodegroup (versus EKS managed-nodegroup) is being used, while this GitHub is to guide how we can use similar work for EKS managed nodegroup. For the detail about difference between self-managed nodegroup and EKS-managed nodegroup, please also refer to the [link](https://docs.aws.amazon.com/eks/latest/userguide/eks-compute.html).
 
 
 
@@ -12,7 +24,7 @@ This Github repo is to guide how we can use EKS-managed nodegroup (MNG) for Mult
 
 * vpc-infra.yaml  - this is to create VPC, subnets, route tables, EKS cluster, IGW, NAT-GW for basic infra environment. 
 
-* eks-mng-lct.yaml - this is to create LaunchTemplate for EKS managed nodegroup. We can define instance type/size, ssh key pair, and tag for each node. Tag is important, since Lambda is attaching additoinal multus interfaces to worker node based on each Tag. 
+* eks-mng-lct.yaml - this is to create LaunchTemplate for EKS managed nodegroup. We can define instance type/size, ssh key pair, and tag for each node. Among parameters, the Tag is the most important, since Lambda is attaching additoinal multus interfaces to the worker node based on matching Tag information. 
 
 * amazon-lambda-for-eksmng-multus.yaml - this creates,
 
@@ -23,7 +35,7 @@ This Github repo is to guide how we can use EKS-managed nodegroup (MNG) for Mult
 
 
 
-First deployment model you can think about is having EKS-MNGs per AZ. In this case, you can use `eks.amazonaws.com/nodegroup=NODE_GROUP_NAME` , as a nodeSelector to place pod to dedciated MNG. 
+First deployment model you can think about is having EKS-MNGs per AZ. In this case, you can use `eks.amazonaws.com/nodegroup=NODE_GROUP_NAME` , as a nodeSelector to place pod to a dedicated MNG. 
 
 ![EksMngInfra-final-config.drawio](./image/EksMngInfra-final-config-2ngs.drawio.png)
 
@@ -41,10 +53,9 @@ This library is licensed under the MIT-0 License. See the LICENSE file.
 
 
 
-## Security 
+## Security
 
-See [CONTRIBUTING] for more information.
-
+See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
 
 
 ## Usage
@@ -70,6 +81,8 @@ See [CONTRIBUTING] for more information.
    * *EksNodeGroupTagKey* - Tag Key that will trigger Lambda AttachENI action. (e.g. `multus-ng`).
    * *LambdaS3Bucket* - S3 bucket name where `eks-mng-multus-lambda.zip` is uploaded.
    * *LambdaS3Key* - Lambda file name (e.g. `eks-mng-multus-lambda.zip` unless you didn't change it).
+   * *useIPsFromStartOfSubnet* - whether to use IP assignment logic of Lambda (to start from smaller number available in the subnet). 
+   * *MultusInterfaceTags* - This is optional, if you want to add a Tag to the multus interface (e.g. with CNF name).  
 
 6. Create NodeGroup from EKS console or CLI using LauncthTemplate created by step 3. 
 
@@ -79,5 +92,5 @@ See [CONTRIBUTING] for more information.
 
 1. This artifact uses EventBridge event rule for LifeCycleHook action (`instant-launching`) to trigger Lambda function. 
 2. In Lambda function, it looks up `Tag` of each node, whether to proceed 2nd interface attachment. 
-3. If Node has a relevant `Tag`, then first it looks up AZ of primary K8s interface. Based on this result, it takes one of the list for multus-subnet (2 list defined for 2 AZs), and attaches interfac(es) from chosen list of subnet(s). 
-4. Afterward action is identical to original Lambda function created in https://github.com/aws-samples/cfn-nodegroup-for-multus-cni/blob/main/lambda/lambda_function.py
+3. If Node has a relevant `Tag`, then first it looks up AZ of primary K8s interface. Based on this result, it takes one of the list for multus-subnet (between 2 lists defined for 2 AZs), and attaches interfac(es) from chosen list of subnet(s). 
+4. Afterward action is identical to original Lambda function created in https://github.com/aws-samples/cfn-nodegroup-for-multus-cni/blob/main/lambda/lambda_function.py Also, like previous raghs-aws@'s [work](https://github.com/raghs-aws/eks-install-guide-for-multus/blob/main/cfn/templates/nodegroup/lambda_function.zip), it supports enhanced logic for IP assignment to multus interface so as to start assigning the available one closest to start address (e.g. from 10.0.4.4/24, 10.0.4.5/24, 10.0.4.6/24... in case of 10.0.4.0/24 subnet)
