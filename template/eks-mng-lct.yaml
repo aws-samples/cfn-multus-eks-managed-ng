@@ -19,6 +19,7 @@ Metadata:
           - NodeVolumeSize
           - KeyName
           - MultusTriggerTagKey
+          - KubeletExtraArguments
 
 Parameters:
   KeyName:
@@ -247,6 +248,10 @@ Parameters:
     Type: String
     Default: "multus-ng"
     Description: "Tag on EKS managed node to trigger Lambda action for Multus interface attachment."
+  KubeletExtraArguments:
+    Type: String
+    Default:  "--node-labels=is_worker=true --cpu-manager-policy=static"
+    Description: "Arguments to pass to the kubelet bootstrap script."
 
 Resources:
   EksMngLaunchTemplate:
@@ -275,9 +280,24 @@ Resources:
             --==BOUNDARY==
             Content-Type: text/x-shellscript; charset="us-ascii"
             #!/bin/bash
+            set -o xtrace
+            cat << EOF > /etc/systemd/system/kubelet.service.d/90-kubelet-extra-args.conf
+            [Service]
+            Environment='USERDATA_EXTRA_ARGS=${KubeletExtraArguments}'
+            EOF
+            # this kubelet.service update is for the version below than EKS 1.24 (e.g. up to 1.23)
+            # but still you can keep the line even if you use EKS 1.24 or higher
+            sed -i 's/KUBELET_EXTRA_ARGS/KUBELET_EXTRA_ARGS $USERDATA_EXTRA_ARGS/' /etc/systemd/system/kubelet.service
+            # this update is for the EKS 1.24 or higher.
+            sed -i 's/KUBELET_EXTRA_ARGS/KUBELET_EXTRA_ARGS $USERDATA_EXTRA_ARGS/' /etc/eks/containerd/kubelet-containerd.service
+            echo "net.ipv4.conf.default.rp_filter = 0" | tee -a /etc/sysctl.conf
+            echo "net.ipv4.conf.all.rp_filter = 0" | tee -a /etc/sysctl.conf
+            sudo sysctl -p
+            sleep 45
             ls /sys/class/net/ > /tmp/ethList;cat /tmp/ethList |while read line ; do sudo ifconfig $line up; done
             grep eth /tmp/ethList |while read line ; do echo "ifconfig $line up" >> /etc/rc.d/rc.local; done
             systemctl enable rc-local
+            chmod +x /etc/rc.d/rc.local
 
             --==BOUNDARY==--
 
