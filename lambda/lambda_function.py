@@ -91,7 +91,7 @@ def lambda_handler(event, context):
         rsp_subnets = ec2_client.describe_subnets(SubnetIds=subnet_ids).get("Subnets")
         for r in rsp_subnets:
             if r['AvailabilityZone'] != inst_az:
-                log("subnet-id in the list of AZ doesn't match with EC2 AZ:"+x)
+                log("subnet-id in the list of AZ doesn't match with EC2 AZ:"+r)
                 exit (1)
 
     ##Check the flag, if the ENI needs to be created statically from the begining of the subnet or the IP allocation can happen dynamically
