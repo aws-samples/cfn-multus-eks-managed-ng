@@ -28,6 +28,10 @@ def lambda_handler(event, context):
     useStaticIPs=False
     log("Multus Interface Attachment Lambda start>> instance_id:"+str(instance_id))
 
+    if event["detail-type"] != "EC2 Instance-launch Lifecycle Action":
+        log("Not a launch-instance event, let's exit")
+        exit (1)
+
     ## Check instance tag whether to proceed or skip
     if os.environ['TargetNodeGroupTagKey'] :
         target_ng_tag_key = os.environ['TargetNodeGroupTagKey']
@@ -91,7 +95,7 @@ def lambda_handler(event, context):
         rsp_subnets = ec2_client.describe_subnets(SubnetIds=subnet_ids).get("Subnets")
         for r in rsp_subnets:
             if r['AvailabilityZone'] != inst_az:
-                log("subnet-id in the list of AZ doesn't match with EC2 AZ:"+x)
+                log("subnet-id in the list of AZ doesn't match with EC2 AZ:"+r)
                 exit (1)
 
     ##Check the flag, if the ENI needs to be created statically from the begining of the subnet or the IP allocation can happen dynamically
@@ -114,42 +118,43 @@ def lambda_handler(event, context):
             log("length of SecGroupIds :"+ len(secgroup_ids)  + "  not same as length of subnets "+ len(subnet_ids) )
             exit (1)
 
-    if event["detail-type"] == "EC2 Instance-launch Lifecycle Action":
-        index = 1
-        ##iterate over the subnet list in order it is sent, create and attach ENIs  on the worker node in same order (i.e. firsat subnet as device-index 1 and nth subnet as device-index n)
-        for x in subnet_ids:
-            subnetDetails.clear()
-            interface_id=None
-            attachment=None
-            try:
-                ##Check whether the subnet is also an ipv6 subnet
-                isIPv6=getsubnetData(x,subnetDetails)
-                if useStaticIPs == False:
-                    interface_id = create_interface(x,secgroup_ids[index-1],isIPv6,tags)
-                ##  if the flag for creating the secondary ENI statically is set, then create the ENI statically else use DHCP to allocate the IP
-                else:
-                    ## Get the list of free IPs from the begining of the subnet cidr in subnetDetails dictionary
-                    getFreeIPs(x,isIPv6,subnetDetails)
-                    interface_id = create_interface_static(x,secgroup_ids[index-1],isIPv6,subnetDetails,tags)
-                ## if interface ENI  is successfully created then attach the ENI to instance
-                if interface_id:
-                    time.sleep(DELAY_SEC)     ## sleep to get the resources created above to be available
-                    attachment = attach_interface(interface_id,instance_id,index)
-                index = index+1
-            except Exception as e:
-                log("Caught unexpected exception: " + str(e))
-            ## if the interface Creation for the attachment to the instace failed, then invoke the Lifecycle failure event for the worker, as this worker couldnt be used
-            if not interface_id:
-                complete_lifecycle_action_failure(LifecycleHookName,AutoScalingGroupName,instance_id)
-                return
-            elif not attachment:
-                ## if the ENI was created but the attachment failed, due to some reason, then delete the ENI/interface as well
-                complete_lifecycle_action_failure(LifecycleHookName,AutoScalingGroupName,instance_id)
-                time.sleep(DELAY_SEC)
-                delete_interface(interface_id)
-                return
-
-        complete_lifecycle_action_success(LifecycleHookName,AutoScalingGroupName,instance_id)
+    ##if event["detail-type"] == "EC2 Instance-launch Lifecycle Action": -- already checked
+    index = 1
+    ##iterate over the subnet list in order it is sent, create and attach ENIs  on the worker node in same order (i.e. firsat subnet as device-index 1 and nth subnet as device-index n)
+    for x in subnet_ids:
+        subnetDetails.clear()
+        interface_id=None
+        attachment=None
+        try:
+            ##Check whether the subnet is also an ipv6 subnet
+            isIPv6=getsubnetData(x,subnetDetails)
+            if useStaticIPs == False:
+                interface_id = create_interface(x,secgroup_ids[index-1],isIPv6,tags)
+            ##  if the flag for creating the secondary ENI statically is set, then create the ENI statically else use DHCP to allocate the IP
+            else:
+                ## Get the list of free IPs from the begining of the subnet cidr in subnetDetails dictionary
+                getFreeIPs(x,isIPv6,subnetDetails)
+                interface_id = create_interface_static(x,secgroup_ids[index-1],isIPv6,subnetDetails,tags)
+            ## if interface ENI  is successfully created then attach the ENI to instance
+            if interface_id:
+                time.sleep(DELAY_SEC)     ## sleep to get the resources created above to be available
+                attachment = attach_interface(interface_id,instance_id,index)
+            index = index+1
+        except Exception as e:
+            log("Caught unexpected exception: " + str(e))
+        ## if the interface Creation for the attachment to the instace failed, then invoke the Lifecycle failure event for the worker, as this worker couldnt be used
+        if not interface_id:
+        ##    complete_lifecycle_action_failure(LifecycleHookName,AutoScalingGroupName,instance_id) -- Since managed-ng creates LC Action as CONTINUE
+            log("sorry, interface creation failed")
+            return
+        elif not attachment:
+            ## if the ENI was created but the attachment failed, due to some reason, then delete the ENI/interface as well
+            ##complete_lifecycle_action_failure(LifecycleHookName,AutoScalingGroupName,instance_id) -- Since managed-ng creates LC Action as CONTINUE 
+            log("sorry, interface attachment failed")
+            time.sleep(DELAY_SEC)
+            delete_interface(interface_id)
+            return
+        ##complete_lifecycle_action_success(LifecycleHookName,AutoScalingGroupName,instance_id) -- Since managed-ng creates LC Action as CONTINUE
 
 ## This function reads the subnetdetails and stores the information like , subnet ipv4 & ipv6 cidr block. Function also retruns if the subnet is ipv6 or not
 def getsubnetData(subnet_id,subnetDetails):
