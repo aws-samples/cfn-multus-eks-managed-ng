@@ -31,7 +31,7 @@ This Github repo is to guide how we can use EKS-managed nodegroup (MNG) for Mult
   * EventRule - using EKS MNG's lifecycel hook, it triggers Lambda 
   * Lambda Function - Lambda to trigger Multus interface attach. 
 
-  This Lambda supports 2 AZs (as an example, but you can add more AZ support) and multiple subnets from each AZ. This Lambda is inherited from https://github.com/raghs-aws/eks-install-guide-for-multus/blob/main/cfn/templates/nodegroup/lambda_function.zip
+  This Lambda supports 2 AZs (as an example, but you can add more AZ support) and multiple subnets from each AZ. This Lambda is inherited from previous [GitHub repo](https://github.com/raghs-aws/eks-install-guide-for-multus/blob/main/cfn/templates/nodegroup/lambda_function.zip). 
 
 
 
@@ -41,8 +41,7 @@ First deployment model you can think about is having EKS-MNGs per AZ. In this ca
 
 
 
-Also you can consider to make MNG spreading across 2 AZs like below figure. In this case, you can use `topology.kubernetes.io/zone=YOUR_EC2_AZ` as a nodeSelector to place a pod to the AZ where you configure NetworkAttachmentDefinition along with subnets of the AZ. As another option, you can configure floating service(virtual) IP (VIP) for the multus interface across 2 AZs as guided in https://github.com/aws-samples/eks-nonintrusive-automated-ipmgmt-multus-pods 
-In this model, you have to give 2 lists of multus-subnets (for each AZ) when you run the CFN for Lambda, and then you have to create EKS MNG over 2 subnets (one each from one AZ). 
+Also you can consider to make MNG spreading across 2 AZs like below figure. In this case, you can use `topology.kubernetes.io/zone=YOUR_EC2_AZ` as a nodeSelector to place a pod to the AZ where you configure NetworkAttachmentDefinition along with subnets of the AZ. As another option, you can configure floating service(virtual) IP (VIP) for the multus interface across 2 AZs as guided in this [GitHub  repo](https://github.com/aws-samples/eks-nonintrusive-automated-ipmgmt-multus-pods). In this model, you have to give 2 lists of multus-subnets (for each AZ) when you run the CFN for Lambda, and then you have to create EKS MNG over 2 subnets (one each from one AZ). 
 
 ![EksMngInfra-final-config.drawio](./image/EksMngInfra-final-config-1ng.drawio.png)
 
