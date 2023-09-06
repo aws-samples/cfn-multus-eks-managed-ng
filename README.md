@@ -149,7 +149,7 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 ### Steps for Approach2
 
 1. Create environment using `vpc-infra.yaml` or you can use your existing environment (VPC and EKS cluster). 
-2. (Optional) It is recommended to reserve IPs for multus Pods using below commands (this is the case to reserve 10.0.4.129~254, 10.0.6.129~254 ranges for using multus Pod IP addresses).
+2. (Optional) It is recommended to reserve IPs for multus Pods using below commands (this is the case to reserve 10.0.4.129\~254, 10.0.6.129\~254 ranges for using multus Pod IP addresses).
 
 ````
 aws ec2 create-subnet-cidr-reservation --subnet-id [YOUR_MULTUS_SUBNET1] --cidr 10.0.4.128/25 --reservation-type explicit
