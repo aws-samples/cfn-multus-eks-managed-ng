@@ -149,79 +149,104 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 ### Steps for Approach2
 
 1. Create environment using `vpc-infra.yaml` or you can use your existing environment (VPC and EKS cluster). 
-2. (Optional) It is recommended to reserve IPs for multus Pods using below commands (this is the case to reserve 10.0.4.129~254, 10.0.6.129~254 ranges for using multus Pod IP addresses).
+2. (Optional) It is recommended to reserve IPs for multus Pods using below commands (this is the case to reserve 10.0.4.129\~254, 10.0.6.129\~254 ranges for using multus Pod IP addresses).
 
 ````
 aws ec2 create-subnet-cidr-reservation --subnet-id [YOUR_MULTUS_SUBNET1] --cidr 10.0.4.128/25 --reservation-type explicit
 aws ec2 create-subnet-cidr-reservation --subnet-id [YOUR_MULTUS_SUBNET2] --cidr 10.0.6.128/25 --reservation-type explicit
 ````
 
-3. Update line 277 and 279 in  `eks-mng-lct-userdata.yaml` using your target multus subnet name(s) (tag name) and security group(s). If you used vpc-infra.yaml for creating subnets, then it is already configured in the `eks-mng-lct-userdata.yaml` as.  `Multus1Az1`, `Multus2Az1`, for multus subnets and  `multus-Sg` for the security group. 
+3. JFYI, LaunchTemplate CFN has a specific userData to create ENI(s) and attach it to the instance before kubelet runs. 
 
-   * This CFN template has specific userData to create ENI(s) and attach it to the instance before kubelet runs. 
+````
+UserData:
+Fn::Base64: !Sub 
+- |
+  Content-Type: multipart/mixed; boundary="==BOUNDARY=="
+  MIME-Version: 1.0
 
-   ````
-   UserData:
-             Fn::Base64: !Sub |
-               Content-Type: multipart/mixed; boundary="==BOUNDARY=="
-               MIME-Version: 1.0
-   
-               --==BOUNDARY==
-               Content-Type: text/x-shellscript; charset="us-ascii"
-               #!/bin/bash
-               set -o xtrace
-               # Multus attachment
-               # List your multus subnets (using resource tag name)
-               subnetList=(Multus1Az1 Multus2Az1)
-               # Define the list of Security groups (using resource tag name)
-               secGrpList=(multus-Sg)
-               n=0
-               for subnet in "${!subnetList[@]}";
-               do
-                   subnetId=`aws ec2 describe-subnets --filters "Name=tag:Name,Values=$subnet" \
-                   --query "Subnets[*].SubnetId" --output text`
-                   secGrp=`aws ec2 describe-security-groups --filters "Name=tag:Name,Values=${!secGrpList[n]}"\
-                   --query "SecurityGroups[*].GroupId" --output text`
-                   ### Get ipv6 cidr if any
-                   subnetipv6=`aws ec2 describe-subnets --filters "Name=tag:Name,Values=$subnet" \
-                   --query "Subnets[*].Ipv6CidrBlockAssociationSet[*].Ipv6CidrBlock" --output text`
-                   
-                   # Create
-                   if [ -n "$subnetipv6" ]; then
-                       multusId=$(aws ec2 create-network-interface --subnet-id ${!subnetId} \
-                       --description "VRF$((n+1))" --groups ${!secGrp} --ipv6-address-count 1 \
-                       --tag-specifications "ResourceType="network-interface", \
-                       Tags=[{Key="node.k8s.amazonaws.com/no_manage",Value="true"}]" | jq -r '.NetworkInterface.NetworkInterfaceId');
-                   else
-                       multusId=$(aws ec2 create-network-interface --subnet-id ${!subnetId} \
-                       --description "VRF$((n+1))" --groups ${!secGrp} \
-                       --tag-specifications "ResourceType="network-interface", \
-                       Tags=[{Key="node.k8s.amazonaws.com/no_manage",Value="true"}]" | jq -r '.NetworkInterface.NetworkInterfaceId');
-                   fi
-   
-                   ### Attach the multus interface to EC2 worker
-                   attachmentId=$(aws ec2 attach-network-interface --network-interface-id \
-                   ${!multusId} --instance-id `curl -s http://169.254.169.254/latest/meta-data/instance-id` \
-                   --output text --device-index $((n+1 )) )
-                   aws ec2 modify-network-interface-attribute --network-interface-id ${!multusId} \
-                   --no-source-dest-check
-                   aws ec2 modify-network-interface-attribute \
-                   --attachment "AttachmentId"="${!attachmentId}","DeleteOnTermination"="True" \
-                   --network-interface-id ${!multusId}
-                   n=$((n+1))
-               done
-               echo "net.ipv4.conf.default.rp_filter = 0" | tee -a /etc/sysctl.conf
-               echo "net.ipv4.conf.all.rp_filter = 0" | tee -a /etc/sysctl.conf
-               sudo sysctl -p
-               ls /sys/class/net/ > /tmp/ethList;cat /tmp/ethList |while read line ; \
-               do sudo ifconfig $line up; done
-               grep eth /tmp/ethList |while read line ; do echo "ifconfig $line up" >> /etc/rc.d/rc.local; done
-               systemctl enable rc-local
-               chmod +x /etc/rc.d/rc.local
-   ````
+  --==BOUNDARY==
+  Content-Type: text/x-shellscript; charset="us-ascii"
+  #!/bin/bash
+  set -o xtrace
+  # List your multus subnets and Security Group
+  subnetids="${SubnetIds}"
+  secgrpids="${SecGrpIds}"
+  IFS=' ' read -ra subnetList <<< "$subnetids"
+  IFS=' ' read -ra secGrpList <<< "$secgrpids"
+  subnetListLen=${!#subnetList[@]}
+  secGrpListLen=${!#secGrpList[@]}
+
+  # If just one security group is defined, then use it for every subnet
+  if [ $subnetListLen != $secGrpListLen ]; then
+      x=0
+      for subnet in "${!subnetList[@]}";
+      do
+          secGrpList[${!x}]="${!secGrpList[0]}"
+          x=$((x+1))
+      done
+  fi 
+
+  # create and attach multus interfaces as requested
+  n=0
+  for subnetId in "${!subnetList[@]}";
+  do
+      secGrpId="${!secGrpList[n]}" 
+      ### Get ipv6 cidr if any
+      subnetipv6=`aws ec2 describe-subnets --subnet-ids ${!subnetId}\
+      --query "Subnets[*].Ipv6CidrBlockAssociationSet[*].Ipv6CidrBlock" --output text`
+
+      ### Create and attach interfaces, multus subnets and security groups are identified using tag Name:Value, 
+      ### checks if subnet has IPV6 if true provisioned ENI with IPv6 else only IPv4
+      if [ -n "$subnetipv6" ]; then
+          multusId=$(aws ec2 create-network-interface --subnet-id ${!subnetId} \
+          --description "VRF$((n+1))" --groups ${!secGrpId} --ipv6-address-count 1 \
+          --tag-specifications "ResourceType="network-interface",\
+          Tags=[{Key="node.k8s.amazonaws.com/no_manage",Value="true"}]" | jq -r '.NetworkInterface.NetworkInterfaceId');
+      else
+          multusId=$(aws ec2 create-network-interface --subnet-id ${!subnetId} \
+          --description "VRF$((n+1))" --groups ${!secGrpId} \
+          --tag-specifications "ResourceType="network-interface",\
+          Tags=[{Key="node.k8s.amazonaws.com/no_manage",Value="true"}]" | jq -r '.NetworkInterface.NetworkInterfaceId');
+      fi
+
+      ### Attach the multus interface to EC2 worker, adjust device-index incrementally for every new attachment
+      attachmentId=$(aws ec2 attach-network-interface --network-interface-id ${!multusId} \
+      --instance-id `curl -s http://169.254.169.254/latest/meta-data/instance-id` \
+      --output text --device-index $((n+1 )) )
+      aws ec2 modify-network-interface-attribute --network-interface-id ${!multusId} --no-source-dest-check
+      aws ec2 modify-network-interface-attribute --attachment "AttachmentId"="${!attachmentId}","DeleteOnTermination"="True" \
+      --network-interface-id ${!multusId}
+      n=$((n+1))
+  done
+  echo "net.ipv4.conf.default.rp_filter = 0" | tee -a /etc/sysctl.conf
+  echo "net.ipv4.conf.all.rp_filter = 0" | tee -a /etc/sysctl.conf
+  sudo sysctl -p
+  ls /sys/class/net/ > /tmp/ethList;cat /tmp/ethList |while read line ; do sudo ifconfig $line up; done
+  grep eth /tmp/ethList |while read line ; do echo "ifconfig $line up" >> /etc/rc.d/rc.local; done
+  systemctl enable rc-local
+  chmod +x /etc/rc.d/rc.local
+
+  # For kubelet arg input
+  cat << EOF > /etc/systemd/system/kubelet.service.d/90-kubelet-extra-args.conf
+  [Service]
+  Environment='USERDATA_EXTRA_ARGS=${KubeletExtraArguments}'
+  EOF
+   # this kubelet.service update is for the version below than EKS 1.24 (e.g. up to 1.23)
+  # but still you can keep the line even if you use EKS 1.24 or higher
+  sed -i 's/KUBELET_EXTRA_ARGS/KUBELET_EXTRA_ARGS $USERDATA_EXTRA_ARGS/' /etc/systemd/system/kubelet.service
+  # this update is for the EKS 1.24 or higher.
+  sed -i 's/KUBELET_EXTRA_ARGS/KUBELET_EXTRA_ARGS $USERDATA_EXTRA_ARGS/' /etc/eks/containerd/kubelet-containerd.service
+  --==BOUNDARY==--
+
+- SubnetIds: !Join [ " ", !Ref MultusSubnets ]
+  SecGrpIds: !Join [ " ", !Ref MultusSecurityGroupIds ]
+````
 
 4. Through CloudFormation console, create a LaunchTeamplte using `eks-mng-lct-userdata.yaml`. This CFN template would create LaunchTemplate for the EKS managed nodegroup. 
    * You can define instance type/size, ssh key pair, and tag for each node. 
+   * *MultusSubnets* - list of subnets to create multus interfaces from. 
+   * *MultusSecurityGroupIds* - Security Group (or list of Security Groups) applied to multus interface(s). Note that, the number of MultusSecurityGroupIds doesn't match with number of MultusSubnets you selected, then only the first Security Group will be used for all Multus subnets listed. If you want to implement each individual Security Group for each Multus subnet, then you have to match selected numbers of Security Groups and Multus Subnets.
 
 5. In Amazon EKS console, go to your EKS cluster. And then select **Compute** section and then click **Add node group** to create an EKS managed node group. 
    * At *Configure node group*, enable to use *Launch Template*, and select LauncTemplate created by  `eks-mng-lct-userdata.yaml`. 
