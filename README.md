@@ -128,8 +128,8 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
    * Among parameters, the `MultusTriggerTagKey` is the most important, since Lambda is attaching additoinal multus interfaces to the worker node based on matching this resource Tag information. 
 
 5. Create Lambda using the CFN of `amazon-lambda-for-eksmng-multus.yaml`.
-   * *MultusSbunetsAz1* - list of subnets to create multus interfaces at AZ1. 
-   * *MultusSbunetsAz2* - list of subnets to create multus interfaces at AZ2. 
+   * *MultusSubnetsAz1* - list of subnets to create multus interfaces at AZ1. 
+   * *MultusSubnetsAz2* - list of subnets to create multus interfaces at AZ2. 
    * *MultusSecurityGroupIds* - Security Group (or list of Security Groups) applied to multus interface(s).
    * *EksNodeGroupTagKey* - Tag Key that will trigger Lambda AttachENI action. (e.g. `multus-ng`).
    * *LambdaS3Bucket* - S3 bucket name where `eks-mng-multus-lambda.zip` is uploaded.
