@@ -155,9 +155,12 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 aws ec2 create-subnet-cidr-reservation --subnet-id [YOUR_MULTUS_SUBNET1] --cidr 10.0.4.128/25 --reservation-type explicit
 aws ec2 create-subnet-cidr-reservation --subnet-id [YOUR_MULTUS_SUBNET2] --cidr 10.0.6.128/25 --reservation-type explicit
 ````
+3. Through the CloudFormation console, create a LaunchTeamplte using `eks-mng-lct-userdata.yaml`. This CFN template would create LaunchTemplate for the EKS managed nodegroup. 
+   * You can define instance type/size, ssh key pair, and tag for each node. 
+   * *MultusSubnets* - list of subnets to create multus interfaces from. 
+   * *MultusSecurityGroupIds* - Security Group (or list of Security Groups) applied to multus interface(s). Note that, the number of MultusSecurityGroupIds doesn't match with number of MultusSubnets you selected, then only the first Security Group will be used for all Multus subnets listed. If you want to implement each individual Security Group for each Multus subnet, then you have to match selected numbers of Security Groups and Multus Subnets.
 
-3. JFYI, LaunchTemplate CFN has a specific userData to create ENI(s) and attach it to the instance before kubelet runs. 
-
+   JFYI, LaunchTemplate CFN has a specific userData to create ENI(s) and attach it to the instance before kubelet runs. 
 ````
 UserData:
 Fn::Base64: !Sub 
@@ -243,11 +246,6 @@ Fn::Base64: !Sub
   SecGrpIds: !Join [ " ", !Ref MultusSecurityGroupIds ]
 ````
 
-4. Through CloudFormation console, create a LaunchTeamplte using `eks-mng-lct-userdata.yaml`. This CFN template would create LaunchTemplate for the EKS managed nodegroup. 
-   * You can define instance type/size, ssh key pair, and tag for each node. 
-   * *MultusSubnets* - list of subnets to create multus interfaces from. 
-   * *MultusSecurityGroupIds* - Security Group (or list of Security Groups) applied to multus interface(s). Note that, the number of MultusSecurityGroupIds doesn't match with number of MultusSubnets you selected, then only the first Security Group will be used for all Multus subnets listed. If you want to implement each individual Security Group for each Multus subnet, then you have to match selected numbers of Security Groups and Multus Subnets.
-
-5. In Amazon EKS console, go to your EKS cluster. And then select **Compute** section and then click **Add node group** to create an EKS managed node group. 
+4. In Amazon EKS console, go to your EKS cluster. And then select **Compute** section and then click **Add node group** to create an EKS managed node group. 
    * At *Configure node group*, enable to use *Launch Template*, and select LauncTemplate created by  `eks-mng-lct-userdata.yaml`. 
    * In *Sepcify networking* section, please select only primary K8s network subnet(s) for *Subnets*. (Multus subnets will be picked up by userData (using resource tag name of the subnet)).
