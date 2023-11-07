@@ -399,8 +399,7 @@ Resources:
         InstanceType: !Ref NodeInstanceType
         KeyName: !Ref KeyName        
         UserData:
-          Fn::Base64: !Sub 
-          - |
+          Fn::Base64: !Sub |
             Content-Type: multipart/mixed; boundary="==BOUNDARY=="
             MIME-Version: 1.0
 
@@ -450,11 +449,12 @@ Resources:
                 fi
 
                 ### Attach the multus interface to EC2 worker, adjust device-index incrementally for every new attachment
-                attachmentId=$(aws ec2 attach-network-interface --network-interface-id ${!multusId} \
+                attachmentResult=$(aws ec2 attach-network-interface --network-interface-id ${!multusId} \
                 --instance-id `curl -s http://169.254.169.254/latest/meta-data/instance-id` \
                 --output text --device-index $((n+1 )) )
+                IFS=' ' read -ra attachmentId <<< $attachmentResult
                 aws ec2 modify-network-interface-attribute --network-interface-id ${!multusId} --no-source-dest-check
-                aws ec2 modify-network-interface-attribute --attachment "AttachmentId"="${!attachmentId}","DeleteOnTermination"="True" \
+                aws ec2 modify-network-interface-attribute --attachment "AttachmentId"=${!attachmentId},"DeleteOnTermination"="True" \
                 --network-interface-id ${!multusId}
                 n=$((n+1))
             done
