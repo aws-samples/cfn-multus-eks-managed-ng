@@ -374,7 +374,7 @@ Parameters:
     Description: "Node volume size."
   KubeletExtraArguments:
     Type: String
-    Default:  "--node-labels=is_worker=true --cpu-manager-policy=static"
+    Default:  "--node-labels=reserved-cpu=true --reserved-cpus=0,1"
     Description: "Arguments to pass to the kubelet bootstrap script."
   MultusSubnets:
     Type: "List<AWS::EC2::Subnet::Id>"
@@ -405,7 +405,24 @@ Resources:
                 MIME-Version: 1.0
 
                 --==BOUNDARY==
+                Content-Type: application/node.eks.aws
+                
+                ---
+                apiVersion: node.eks.aws/v1alpha1
+                kind: NodeConfig
+                spec:
+                  kubelet:
+                    config:
+                      cpuManagerPolicy: "static"
+                      systemReservedCgroup: ""
+                      kubeReservedCgroup: ""
+                      topologyManagerPolicy: "single-numa-node"
+                    flags:
+                    - "${KubeletExtraArguments}"
+
+                --==BOUNDARY==
                 Content-Type: text/x-shellscript; charset="us-ascii"
+
                 #!/bin/bash
                 set -o xtrace
                 # List your multus subnets and Security Group
@@ -425,6 +442,9 @@ Resources:
                         x=$((x+1))
                     done
                 fi 
+                
+                TOKEN=`curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
+                instanceId=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
 
                 # create and attach multus interfaces as requested
                 n=0
@@ -451,9 +471,8 @@ Resources:
 
                     ### Attach the multus interface to EC2 worker, adjust device-index incrementally for every new attachment
                     attachmentResult=$(aws ec2 attach-network-interface --network-interface-id ${!multusId} \
-                    --instance-id `curl -s http://169.254.169.254/latest/meta-data/instance-id` \
-                    --output text --device-index $((n+1 )) )
-                    IFS=' ' read -ra attachmentId <<< $attachmentResult
+                    --instance-id $instanceId --output text --device-index $((n+1 )) )
+                    attachmentId=$(echo "$attachmentResult" | awk '{print $1}')
                     aws ec2 modify-network-interface-attribute --network-interface-id ${!multusId} --no-source-dest-check
                     aws ec2 modify-network-interface-attribute --attachment "AttachmentId"=${!attachmentId},"DeleteOnTermination"="True" \
                     --network-interface-id ${!multusId}
@@ -464,19 +483,31 @@ Resources:
                 sudo sysctl -p
                 ls /sys/class/net/ > /tmp/ethList;cat /tmp/ethList |while read line ; do sudo ifconfig $line up; done
                 grep eth /tmp/ethList |while read line ; do echo "ifconfig $line up" >> /etc/rc.d/rc.local; done
-                systemctl enable rc-local
-                chmod +x /etc/rc.d/rc.local
-                
-                # For kubelet arg input
-                cat << EOF > /etc/systemd/system/kubelet.service.d/90-kubelet-extra-args.conf
+
+                # Enable rc.local service
+                cat << EOF > /etc/systemd/system/rc-local.service
+                [Unit]
+                 Description=/etc/rc.local Compatibility
+                 ConditionPathExists=/etc/rc.local
+  
                 [Service]
-                Environment='USERDATA_EXTRA_ARGS=${KubeletExtraArguments}'
+                 Type=forking
+                 ExecStart=/etc/rc.local start
+                 TimeoutSec=0
+                 StandardOutput=tty
+                 RemainAfterExit=yes
+
+                [Install]
+                 WantedBy=multi-user.target
                 EOF
-                # this kubelet.service update is for the version below than EKS 1.24 (e.g. up to 1.23)
-                # but still you can keep the line even if you use EKS 1.24 or higher
-                sed -i 's/KUBELET_EXTRA_ARGS/KUBELET_EXTRA_ARGS $USERDATA_EXTRA_ARGS/' /etc/systemd/system/kubelet.service
-                # this update is for the EKS 1.24 or higher.
-                sed -i 's/KUBELET_EXTRA_ARGS/KUBELET_EXTRA_ARGS $USERDATA_EXTRA_ARGS/' /etc/eks/containerd/kubelet-containerd.service
+
+                touch /etc/rc.local
+                chmod +x /etc/rc.local
+                systemctl enable rc-local
+                
+                #echo "modify reserved CPUs dynamically"
+                #sed -i 's/\(--reserved-cpus=\)[0-9,]*/\10-2/g' /etc/eks/kubelet/environment
+
                 --==BOUNDARY==--
               - SubnetIds: !Join [ " ", !Ref MultusSubnets ]
                 SecGrpIds: !Join [ " ", !Ref MultusSecurityGroupIds ]
